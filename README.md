@@ -17,11 +17,21 @@ Model weights are downloaded automatically by TorchVision and timm.
 
 ## Generate Adversarial Examples
 
-The paper uses Qwen3.7-Plus through Alibaba Cloud Model Studio. Set the API variables before generation.
+The paper uses Qwen3.7-Plus through Alibaba Cloud Model Studio. Keep the API key in environment variables and never commit it to source code or configuration files.
+
+Linux and macOS
 
 ```bash
 export DASHSCOPE_API_KEY=<your-key>
 export DASHSCOPE_BASE_URL=<openai-compatible-endpoint>
+python generate.py --attack mi --surrogate resnet50 --seed 0
+```
+
+Windows PowerShell
+
+```powershell
+$env:DASHSCOPE_API_KEY = "<your-key>"
+$env:DASHSCOPE_BASE_URL = "<openai-compatible-endpoint>"
 python generate.py --attack mi --surrogate resnet50 --seed 0
 ```
 
