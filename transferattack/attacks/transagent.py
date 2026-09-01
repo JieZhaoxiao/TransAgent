@@ -12,7 +12,8 @@ import torch.nn.functional as functional
 from transagent.agent import TransAgentCoordinator
 from transagent.base_attacks import build_estimator
 from transagent.memory import append_jsonl
-from transagent.reward import RewardWeights, compute_reward
+from transagent.reward import (RewardWeights, accumulated_direction_cosine,
+                               compute_reward, signal_cosine)
 from transagent.schemas import AttackState, TransformProgram
 from transagent.state_encoder import StateEncoder
 from transagent.transform_program import ActiveProgram
@@ -24,7 +25,7 @@ class TransAgent(MIFGSM):
     attack_name = "TransAgent"
 
     def __init__(self, *args, run_dir: str | Path, seed: int = 0, agent_enabled: bool = True,
-                 transform_samples: int = 3, probe_views: int = 2,
+                 probe_views: int = 2,
                  reward_weights: dict | None = None, isolated_api_cache: bool = False,
                  base_attack: str = "mifgsm", base_attack_config: dict | None = None,
                  planner_config: dict | None = None, rl_config: dict | None = None,
@@ -38,7 +39,6 @@ class TransAgent(MIFGSM):
             rl_config=rl_config, memory_retrieval_limit=memory_retrieval_limit)
         self.encoder = StateEncoder()
         self.generator = torch.Generator(device=self.device).manual_seed(seed)
-        self.transform_samples = int(transform_samples)
         self.probe_views = int(probe_views)
         self.reward_weights = RewardWeights(**(reward_weights or {}))
         self.base_attack = base_attack.lower()
@@ -110,22 +110,25 @@ class TransAgent(MIFGSM):
         previous_grad, previous_loss = initial_grad, initial_loss
         recent_reward, ineffective = 0.0, 0
         delayed_rewards: list[float] = []
-        by_id = {program.program_id: program for program in candidates}
         identity = TransformProgram.model_validate({
             "program_id": "identity_fallback",
             "operations": [{"name": "identity", "intensity": 0.0, "probability": 1.0, "params": {}}],
             "duration": 1, "phases": ["early", "middle", "late"],
             "stop_condition": "none", "rationale": "Safety fallback to the base attack's identity path."})
-        active = ActiveProgram(by_id[decision.selected_program], 0, by_id[decision.selected_program].duration)
+        program, _ = self.coordinator.controller.select(state, candidates)
+        if tools is not None:
+            tools.record_selection(program)
+        active = ActiveProgram(program, 0, program.duration)
         force_identity = False
         for step in range(self.epoch):
             if step > 0 and step % self.replanning_interval == 0 and self.coordinator.agent_enabled:
                 decision, candidates, replanning_fallback, tools = self.coordinator.plan(
                     batch_id, data + delta, state, probe, planning_step=step)
                 self.api_fallback_batches += int(replanning_fallback)
-                by_id = {program.program_id: program for program in candidates}
-                active = ActiveProgram(by_id[decision.selected_program], step,
-                                       by_id[decision.selected_program].duration)
+                program, _ = self.coordinator.controller.select(state, candidates)
+                if tools is not None:
+                    tools.record_selection(program)
+                active = ActiveProgram(program, step, program.duration)
             if force_identity:
                 program = identity
                 active = ActiveProgram(identity, step, 1)
@@ -134,13 +137,15 @@ class TransAgent(MIFGSM):
                 program = active.program
             else:
                 program, _ = self.coordinator.controller.select(state, candidates)
+                if tools is not None:
+                    tools.record_selection(program)
                 active = ActiveProgram(program, step, program.duration)
             delta = self.estimator.prepare_delta(self, data, labels, delta, program)
-            before_loss = float(self.loss(self.model(data + delta), labels).item())
+            before_loss, identity_grad = self._identity_observation(data, labels, delta)
             transformed_loss, grad = self._program_gradient(data, labels, delta, program)
-            cosine = float(functional.cosine_similarity(
-                grad.detach().flatten(1), previous_grad.flatten(1), dim=1).mean().item())
-            momentum_complementarity = max(0.0, 1.0 - abs(cosine))
+            direction_cosine = accumulated_direction_cosine(
+                grad, None if isinstance(momentum, int) else momentum)
+            view_complementarity = max(0.0, 1.0 - signal_cosine(grad, identity_grad))
             momentum = self.estimator.momentum(self, grad, momentum)
             delta = self.update_delta(delta, data, momentum)
             after_loss = float(self.loss(self.model(data + delta), labels).item())
@@ -149,15 +154,15 @@ class TransAgent(MIFGSM):
                 self.model(apply_program(data + delta, program, self.generator)), labels).item())
             heldout_growth = (heldout_after - transformed_loss) / max(1.0, abs(transformed_loss))
             view_consistency = (tools.probes.get(program.program_id, {}).get(
-                "view_gradient_consistency", cosine) if tools is not None else cosine)
+                "view_gradient_consistency", 1.0) if tools is not None else 1.0)
             reward, components = compute_reward(
                 heldout_loss_growth=heldout_growth, gradient_stability=max(-1.0, view_consistency),
-                momentum_complementarity=momentum_complementarity, original_progress=progress,
+                momentum_complementarity=view_complementarity, original_progress=progress,
                 persistence=recent_reward, compute_cost=program_cost(program),
-                gradient_conflict=max(0.0, -cosine), ineffective_streak=ineffective,
+                gradient_conflict=max(0.0, -direction_cosine), ineffective_streak=ineffective,
                 weights=self.reward_weights)
             ineffective = ineffective + 1 if reward <= 0 else 0
-            active.observe(reward, directional_conflict=cosine < 0)
+            active.observe(reward, directional_conflict=direction_cosine < 0)
             if active.should_rollback:
                 force_identity = True
                 append_jsonl(self.run_dir / "tool_calls.jsonl", {

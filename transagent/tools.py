@@ -59,10 +59,6 @@ TOOL_SCHEMAS = [
           {"program_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1}}, ["program_ids"]),
     _tool("compare_programs", "Compare programs using only recorded probe metrics.",
           {"program_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1}}, ["program_ids"]),
-    _tool("commit_transform_program", "Commit one candidate for local control.",
-          {"program_id": {"type": "string"}}, ["program_id"]),
-    _tool("rollback_transform_program", "Rollback to identity or a prior candidate.",
-          {"program_id": {"type": "string"}}, ["program_id"]),
     _tool("reflect_episode", "Return proxy observations available for structured reflection.", {}),
     _tool("store_memory", "Request storage of a sanitized experience after local verification.",
           {"summary": {"type": "string", "maxLength": 1200}}, ["summary"]),
@@ -76,11 +72,11 @@ class AgentTools:
         self.state, self.memory, self.probe = state, memory, probe
         self.programs: dict[str, TransformProgram] = {}
         self.probes: dict[str, dict[str, float]] = {}
-        self.committed = "identity"
+        self.ranked_program_ids: list[str] = []
+        self.selected_program = "identity"
         self.created_called = False
         self.probed_called = False
         self.compared_called = False
-        self.commit_called = False
         self.inspect_called = False
         self.retrieve_called = False
         self.retrieval_limit = int(retrieval_limit)
@@ -104,6 +100,8 @@ class AgentTools:
             if missing_phases:
                 raise ValueError("Candidate set must cover all attack phases; missing: " +
                                  ",".join(sorted(missing_phases)))
+            if not any(self._is_identity(program) for program in validated):
+                raise ValueError("Candidate programs must include identity")
             self.programs = {program.program_id: program for program in validated}
             self.created_called = True
             return {"accepted_program_ids": list(self.programs)}
@@ -121,25 +119,35 @@ class AgentTools:
                 raise ValueError("All compared programs must have equal-budget probe results")
             values = {program_id: self.probes.get(program_id, {"status": "not_probed"})
                       for program_id in arguments["program_ids"]}
+            self.ranked_program_ids = sorted(
+                arguments["program_ids"],
+                key=lambda program_id: self.probes[program_id]["proxy_score"],
+                reverse=True,
+            )
             self.compared_called = True
-            return {"equal_budget_comparison": values}
-        if name == "commit_transform_program":
-            program_id = arguments["program_id"]
-            if program_id not in self.programs:
-                raise ValueError("Cannot commit an unstaged program")
-            if program_id not in self.probes:
-                raise ValueError("Cannot commit a program without a real proxy probe")
-            self.committed = program_id
-            self.commit_called = True
-            return {"committed": program_id}
-        if name == "rollback_transform_program":
-            target = arguments["program_id"]
-            self.committed = target if target in self.programs else "identity"
-            return {"rolled_back_to": self.committed}
+            return {"ranked_program_ids": self.ranked_program_ids,
+                    "equal_budget_comparison": values}
         if name == "reflect_episode":
-            return {"working_memory": list(self.memory.working), "probe_metrics": self.probes}
+            return {"working_memory": list(self.memory.working), "probe_metrics": self.probes,
+                    "ranked_program_ids": self.ranked_program_ids,
+                    "selected_program": self.selected_program}
         if name == "store_memory":
             summary = str(arguments["summary"])
             self.memory.add_working({"source": "planner", "summary": summary})
             return {"accepted": True, "note": "Queued in working memory; persistence requires local reward verification."}
         raise ValueError(f"Unknown tool: {name}")
+
+    @staticmethod
+    def _is_identity(program: TransformProgram) -> bool:
+        return (len(program.operations) == 1 and
+                program.operations[0].name == "identity")
+
+    def ranked_candidates(self) -> list[TransformProgram]:
+        if not self.ranked_program_ids:
+            raise ValueError("Programs must be compared before ranking")
+        return [self.programs[program_id] for program_id in self.ranked_program_ids]
+
+    def record_selection(self, program: TransformProgram) -> None:
+        if program.program_id not in self.programs:
+            raise ValueError("The controller selected an unstaged program")
+        self.selected_program = program.program_id

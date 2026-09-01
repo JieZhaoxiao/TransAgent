@@ -38,9 +38,7 @@ class LinearQController:
         self.episode_id = "unknown"
 
     def _features(self, state: list[float], action: list[float]) -> np.ndarray:
-        base = np.asarray(state + action, dtype=np.float64)
-        interactions = np.outer(np.asarray(state[:8]), np.asarray(action[:8])).ravel()
-        return np.concatenate(([1.0], base, interactions))
+        return np.asarray(state + action, dtype=np.float64)
 
     def q_value(self, state: AttackState, program: TransformProgram) -> float:
         features = self._features(self.encoder.vector(state), program_features(program))

@@ -48,7 +48,7 @@ class TransAgentCoordinator:
             decision = PlanningDecision(
                 decision_summary="Agent disabled; exact base-attack identity path.", observed_problem="none",
                 retrieved_experience="none", hypothesis="Identity preserves the configured base attack.",
-                candidate_programs=[identity] * 4, selected_program="identity", rejected_programs=[],
+                candidate_programs=[identity] * 4,
                 expected_effect="Exact baseline behavior.")
             return decision, [identity], True, None
         decision, tools, fallback = self.planner.plan(image, state, self.memory, probe)

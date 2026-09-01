@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import torch
+import torch.nn.functional as functional
+
 
 @dataclass(frozen=True)
 class RewardWeights:
@@ -15,6 +18,21 @@ class RewardWeights:
     compute_cost: float = 0.04
     gradient_conflict: float = 0.25
     ineffective_action: float = 0.15
+
+
+def accumulated_direction_cosine(direction: torch.Tensor,
+                                 accumulated: torch.Tensor | None) -> float:
+    if accumulated is None or not bool(accumulated.detach().abs().any()):
+        return 0.0
+    return float(functional.cosine_similarity(
+        direction.detach().flatten(1), accumulated.detach().flatten(1), dim=1
+    ).mean().item())
+
+
+def signal_cosine(first: torch.Tensor, second: torch.Tensor) -> float:
+    return float(functional.cosine_similarity(
+        first.detach().flatten(1), second.detach().flatten(1), dim=1
+    ).mean().item())
 
 
 def compute_reward(

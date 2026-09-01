@@ -46,8 +46,6 @@ def load_model(name: str, device: torch.device) -> nn.Module:
     if hasattr(backbone, "default_cfg"):
         cfg = backbone.default_cfg
         size, mean, std = 224, cfg["mean"], cfg["std"]
-    elif "Inc" in backbone.__class__.__name__:
-        size, mean, std = 299, [0.5] * 3, [0.5] * 3
     else:
         size = 224
         mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]

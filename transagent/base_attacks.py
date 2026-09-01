@@ -36,12 +36,10 @@ class BaseGradientEstimator:
 
     def gradient(self, attack: "TransAgent", data: torch.Tensor, labels: torch.Tensor,
                  delta: torch.Tensor, program: TransformProgram) -> GradientEstimate:
-        views = [apply_program(data + delta, program, attack.generator)
-                 for _ in range(attack.transform_samples)]
-        logits = attack.model(torch.cat(views, dim=0))
-        loss = attack.loss(logits, labels.repeat(attack.transform_samples))
+        transformed = apply_program(data + delta, program, attack.generator)
+        loss = attack.loss(attack.model(transformed), labels)
         grad = torch.autograd.grad(loss, delta)[0]
-        return GradientEstimate(float(loss.item()), grad, data.shape[0] * attack.transform_samples)
+        return GradientEstimate(float(loss.item()), grad, data.shape[0])
 
     def prepare_delta(self, attack: "TransAgent", data: torch.Tensor, labels: torch.Tensor,
                       delta: torch.Tensor, program: TransformProgram) -> torch.Tensor:

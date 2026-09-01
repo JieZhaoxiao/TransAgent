@@ -43,7 +43,6 @@ attack:
   targeted: false
   batch_size: 5
   num_workers: 4
-  transform_samples: 3
   probe_views: 2
 
 planner:

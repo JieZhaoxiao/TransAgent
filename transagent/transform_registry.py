@@ -15,6 +15,10 @@ def _rand(inputs: torch.Tensor, generator: torch.Generator) -> float:
     return float(torch.rand((), device=inputs.device, generator=generator).item())
 
 
+def _block_count(operation, default: int = 2) -> int:
+    return max(2, min(16, int(operation.params.get("blocks", default))))
+
+
 def identity(inputs, operation, generator):
     return inputs
 
@@ -70,7 +74,7 @@ def multi_scale(inputs, operation, generator):
 
 
 def block_partition(inputs, operation, generator):
-    blocks = int(operation.params.get("blocks", 2 + round(2 * operation.intensity)))
+    blocks = _block_count(operation, 2 + round(2 * operation.intensity))
     height, width = inputs.shape[-2:]
     result = inputs.clone()
     for row in range(blocks):
@@ -83,8 +87,7 @@ def block_partition(inputs, operation, generator):
 
 
 def block_shuffle(inputs, operation, generator):
-    blocks = int(operation.params.get("blocks", 2 if operation.intensity < 0.75 else 4))
-    blocks = blocks if blocks in (2, 4, 7, 8, 14, 16) else 2
+    blocks = _block_count(operation, 2 if operation.intensity < 0.75 else 4)
     height, width = inputs.shape[-2:]
     rows = torch.tensor_split(inputs, blocks, dim=2)
     patches = [patch for row in rows for patch in torch.tensor_split(row, blocks, dim=3)]
@@ -95,7 +98,7 @@ def block_shuffle(inputs, operation, generator):
 
 
 def block_rotation(inputs, operation, generator):
-    blocks = int(operation.params.get("blocks", 2))
+    blocks = _block_count(operation)
     rows = []
     for row in torch.tensor_split(inputs, blocks, dim=2):
         patches = []
@@ -108,7 +111,7 @@ def block_rotation(inputs, operation, generator):
 
 
 def block_resize(inputs, operation, generator):
-    blocks = int(operation.params.get("blocks", 2))
+    blocks = _block_count(operation)
     rows = []
     for row in torch.tensor_split(inputs, blocks, dim=2):
         patches = []
@@ -184,13 +187,15 @@ def apply_program(inputs: torch.Tensor, program: TransformProgram, generator: to
 
 
 def program_cost(program: TransformProgram) -> float:
-    expensive = {"block_shuffle", "block_rotation", "block_resize", "frequency_mask", "frequency_perturbation"}
+    expensive = {"block_partition", "block_shuffle", "block_rotation", "block_resize",
+                 "frequency_mask", "frequency_perturbation"}
     return float(sum(1.5 if op.name in expensive else 1.0 for op in program.operations))
 
 
 def program_features(program: TransformProgram) -> list[float]:
     names = list(REGISTRY)
-    histogram = [0.0] * len(names)
+    indicators = [0.0] * len(names)
     for op in program.operations:
-        histogram[names.index(op.name)] += op.intensity * op.probability
-    return histogram + [len(program.operations) / 3, program.duration / 10, program_cost(program) / 4.5]
+        indicators[names.index(op.name)] = 1.0
+    return indicators + [len(program.operations) / 3, program.duration / 10,
+                         program_cost(program) / 4.5]

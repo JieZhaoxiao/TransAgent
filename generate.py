@@ -81,7 +81,6 @@ def main() -> None:
         device=args.device,
         run_dir=run_dir,
         seed=args.seed,
-        transform_samples=attack_config["transform_samples"],
         probe_views=attack_config["probe_views"],
         reward_weights=config["reward"],
         base_attack=args.attack,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 ATOM_NAMES = Literal[
     "identity", "resize_pad", "crop", "translation", "scale", "multi_scale",
@@ -40,19 +40,10 @@ class PlanningDecision(StrictModel):
     retrieved_experience: str = Field(max_length=1600)
     hypothesis: str = Field(max_length=1200)
     candidate_programs: list[TransformProgram] = Field(min_length=4, max_length=8)
-    selected_program: str = Field(max_length=64)
-    rejected_programs: list[str] = Field(max_length=8)
     expected_effect: str = Field(max_length=1200)
     observed_effect: str = Field(default="", max_length=1200)
     reflection: str = Field(default="", max_length=1600)
     next_strategy: str = Field(default="", max_length=1200)
-
-    @model_validator(mode="after")
-    def selected_candidate_exists(self):
-        ids = {program.program_id for program in self.candidate_programs}
-        if self.selected_program not in ids:
-            raise ValueError("selected_program must name a candidate")
-        return self
 
 
 class Reflection(StrictModel):

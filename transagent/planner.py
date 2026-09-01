@@ -22,9 +22,10 @@ from .tools import AgentTools, TOOL_SCHEMAS
 SYSTEM_PROMPT = """You are the high-level planner for TransAgent, an input-transformation agent for {base_attack}.
 Use the current image batch and only tool-returned numerical evidence. Never invent loss, reward, ASR, or tool results.
 Do not choose DIM, TIM, BSR, OPS, or any named attack as an action. Construct 4-8 programs, each with 1-3
-allowed atomic operations. Use inspect, retrieve, create, probe, compare, then commit. Return only the
+allowed atomic operations and include an identity program. Use inspect, retrieve, create, probe, then compare. Return only the
 auditable JSON fields required by the provided schema. Do not reveal or include private chain of thought.
 Target models are unavailable and must never influence planning. Programs must vary by state and phase.
+The evaluator ranks every candidate from equal-budget probes, and the local controller selects a validated program.
 The local controller uses each candidate set until the next replanning step. The union of candidate phases
 must cover early, middle, and late so that valid programs remain available after state changes.
 """
@@ -81,7 +82,7 @@ class QwenPlanner:
                 for _ in range(14):
                     chain_complete = all((tools.inspect_called, tools.retrieve_called,
                                           tools.created_called, tools.probed_called,
-                                          tools.compared_called, tools.commit_called))
+                                          tools.compared_called))
                     response = self.client.complete(
                         messages, [] if chain_complete else TOOL_SCHEMAS,
                         planner_response_schema() if chain_complete else None,
@@ -118,10 +119,11 @@ class QwenPlanner:
                         continue
                     if not all((tools.inspect_called, tools.retrieve_called,
                                 tools.created_called, tools.probed_called,
-                                tools.compared_called, tools.commit_called)):
+                                tools.compared_called)):
                         raise ValueError("Planner returned before completing the required tool chain")
-                    if decision.selected_program != tools.committed:
-                        raise ValueError("Final selected_program differs from the committed tool action")
+                    decision = decision.model_copy(update={
+                        "candidate_programs": tools.ranked_candidates(),
+                    })
                     return decision, tools, False
             except (BailianUnavailable, ValidationError, ValueError, KeyError, json.JSONDecodeError):
                 pass
@@ -129,15 +131,15 @@ class QwenPlanner:
         tools.programs = {program.program_id: program for program in candidates}
         probes = probe(candidates)
         tools.probes.update(probes)
-        selected = max(candidates, key=lambda item: probes[item.program_id]["proxy_score"])
-        tools.committed = selected.program_id
+        tools.ranked_program_ids = [program.program_id for program in sorted(
+            candidates, key=lambda item: probes[item.program_id]["proxy_score"], reverse=True)]
+        candidates = tools.ranked_candidates()
         decision = PlanningDecision(
-            decision_summary="API unavailable or invalid; activated documented local RL fallback.",
+            decision_summary="API unavailable or invalid; evaluated local fallback candidates.",
             observed_problem=f"Compressed phase={state.phase}, loss_delta={state.recent_loss_delta:.4f}.",
             retrieved_experience=json.dumps(memory.retrieve(state, self.retrieval_limit), ensure_ascii=True)[:1600],
             hypothesis="Diverse differentiable views may improve proxy gradient stability.",
-            candidate_programs=candidates, selected_program=selected.program_id,
-            rejected_programs=[p.program_id for p in candidates if p.program_id != selected.program_id],
+            candidate_programs=candidates,
             expected_effect="Improve held-out proxy loss and gradient consistency without target feedback.")
         return decision, tools, True
 
@@ -146,7 +148,9 @@ class QwenPlanner:
             decision_summary=decision.decision_summary, observed_problem=decision.observed_problem,
             retrieved_experience=decision.retrieved_experience, hypothesis=decision.hypothesis,
             candidate_programs=[program.model_dump() for program in decision.candidate_programs],
-            selected_program=decision.selected_program, rejected_programs=decision.rejected_programs,
+            selected_program=tools.selected_program,
+            rejected_programs=[program.program_id for program in decision.candidate_programs
+                               if program.program_id != tools.selected_program],
             expected_effect=decision.expected_effect,
             observed_effect=json.dumps(list(tools.memory.working), ensure_ascii=True)[:1200],
             reflection="Local fallback reflection based only on recorded proxy rewards.",

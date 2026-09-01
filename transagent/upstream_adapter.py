@@ -14,7 +14,8 @@ from third_party.transferattack import attack_zoo, load_attack_class
 
 from .agent import TransAgentCoordinator
 from .memory import append_jsonl
-from .reward import RewardWeights, compute_reward
+from .reward import (RewardWeights, accumulated_direction_cosine, compute_reward,
+                     signal_cosine)
 from .schemas import TransformProgram
 from .state_encoder import StateEncoder
 from .transform_program import ActiveProgram
@@ -196,17 +197,18 @@ class UpstreamTransAgent:
             planning_step=step,
         )
         self._decision, self._candidates, self._tools = decision, candidates, tools
-        by_id = {program.program_id: program for program in candidates}
-        self._activate(by_id[decision.selected_program], step)
+        program, _ = self.coordinator.controller.select(self._state, candidates)
+        if tools is not None:
+            tools.record_selection(program)
+        self._activate(program, step)
         self._api_fallback = self._api_fallback or fallback
 
     def _observe_update(self, delta: torch.Tensor, direction: torch.Tensor) -> None:
         step = self._step
         loss, measured_direction = self._loss_and_direction(self._data + delta, self._labels)
         direction = direction.detach() if isinstance(direction, torch.Tensor) else measured_direction
-        cosine = float(functional.cosine_similarity(
-            direction.flatten(1), self._previous_direction.flatten(1), dim=1
-        ).mean().item())
+        direction_cosine = accumulated_direction_cosine(direction, self._accumulated_direction)
+        view_complementarity = max(0.0, 1.0 - signal_cosine(direction, measured_direction))
         progress = (loss - self._previous_loss) / max(1.0, abs(self._previous_loss))
         transformed_loss, _ = self._loss_and_direction(
             apply_program(self._data + delta, self.current_program, self.generator), self._labels
@@ -214,24 +216,27 @@ class UpstreamTransAgent:
         transformed_growth = (transformed_loss - self._previous_loss) / max(
             1.0, abs(self._previous_loss)
         )
-        consistency = cosine
+        consistency = 1.0
         if self._tools is not None:
             consistency = self._tools.probes.get(self.current_program.program_id, {}).get(
-                "view_gradient_consistency", cosine
+                "view_gradient_consistency", 1.0
             )
         reward, components = compute_reward(
             heldout_loss_growth=transformed_growth,
             gradient_stability=max(-1.0, consistency),
-            momentum_complementarity=max(0.0, 1.0 - abs(cosine)),
+            momentum_complementarity=view_complementarity,
             original_progress=progress,
             persistence=self._recent_reward,
             compute_cost=program_cost(self.current_program),
-            gradient_conflict=max(0.0, -cosine),
+            gradient_conflict=max(0.0, -direction_cosine),
             ineffective_streak=self._ineffective,
             weights=self.reward_weights,
         )
         self._ineffective = self._ineffective + 1 if reward <= 0 else 0
-        self._active.observe(reward, directional_conflict=cosine < 0)
+        self._active.observe(reward, directional_conflict=direction_cosine < 0)
+        normalized = direction / direction.detach().abs().mean(
+            dim=(1, 2, 3), keepdim=True).clamp_min(1e-12)
+        next_accumulated_direction = self._accumulated_direction + normalized
         next_step = min(step + 1, self.epoch - 1)
         next_state = self.encoder.encode(
             step=next_step,
@@ -240,7 +245,7 @@ class UpstreamTransAgent:
             previous_loss=self._previous_loss,
             grad=direction,
             previous_grad=self._previous_direction,
-            momentum=direction,
+            momentum=next_accumulated_direction,
             view_consistency=consistency,
             delta=delta,
             image=self._data,
@@ -273,6 +278,7 @@ class UpstreamTransAgent:
         self._state = next_state
         self._previous_loss = loss
         self._previous_direction = direction
+        self._accumulated_direction = next_accumulated_direction
         self._recent_reward = reward
         self._delta = delta.detach()
         self._step += 1
@@ -285,6 +291,8 @@ class UpstreamTransAgent:
             self._plan(self._step)
         elif self._active.expired or self._state.phase not in self.current_program.phases:
             program, _ = self.coordinator.controller.select(self._state, self._candidates)
+            if self._tools is not None:
+                self._tools.record_selection(program)
             self._activate(program, self._step)
 
     def _update_delta(self, _attack, delta, data, direction, *args, **kwargs):
@@ -304,6 +312,7 @@ class UpstreamTransAgent:
         initial_loss, initial_direction = self._loss_and_direction(self._data, self._labels)
         self._previous_loss = initial_loss
         self._previous_direction = initial_direction
+        self._accumulated_direction = torch.zeros_like(initial_direction)
         self._recent_reward = 0.0
         self._ineffective = 0
         self._step = 0
