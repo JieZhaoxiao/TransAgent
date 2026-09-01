@@ -1,0 +1,71 @@
+data_root: data
+output_root: outputs
+run_root: runs
+
+surrogates:
+  resnet50: resnet50
+  vit: vit_base_patch16_224
+
+base_attacks:
+  mi: {}
+  pgn:
+    beta: 3.0
+    gamma: 0.5
+    num_neighbor: 20
+  mumodig:
+    N_trans: 6
+    N_base: 1
+    N_interpolate: 1
+    region_num: 2
+    lamb: 0.65
+  gaa:
+    rho: 0.006274509803921569
+    lambda_param: 0.2
+    xi_factor: 3.5
+    N: 20
+  foolmix:
+    m: 5
+    n: 3
+    z: 1
+    k: 5
+    zeta: 0.2
+    beta: 1.0
+    gamma: 0.1
+
+seeds: [0, 1, 2]
+
+attack:
+  epsilon: 0.06274509803921569
+  alpha: 0.006274509803921569
+  steps: 10
+  decay: 1.0
+  random_start: false
+  targeted: false
+  batch_size: 5
+  num_workers: 4
+  transform_samples: 3
+  probe_views: 2
+
+planner:
+  model: qwen3.7-plus
+  temperature: 0.35
+  isolated_api_cache: true
+  replanning_interval: 5
+  memory_retrieval_limit: 7
+  timeout_seconds: 90
+  retries: 3
+
+controller:
+  learning_rate: 0.03
+  gamma: 0.9
+  epsilon_greedy: 0.25
+
+reward:
+  heldout_loss_growth: 1.0
+  gradient_stability: 0.35
+  momentum_complementarity: 0.15
+  original_progress: 0.8
+  persistence: 0.2
+  compute_cost: 0.04
+  gradient_conflict: 0.25
+  ineffective_action: 0.15

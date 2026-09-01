@@ -1,0 +1,8 @@
+mobilenet_v2
+inception_v3
+convnext_tiny
+vit_base_patch16_224
+pit_b_224
+swin_tiny_patch4_window7_224
+cait_s24_224
+

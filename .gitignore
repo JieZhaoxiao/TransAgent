@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.idea/
+.vscode/
+cache/
+outputs/
+runs/
+*.sqlite*
+*.jsonl
+*.npy
+*.log
+
