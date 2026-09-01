@@ -74,7 +74,7 @@ class RFCoA(Attack):
         model_dict.update(checkpoint['state_dict'])
         new_state_dict = OrderedDict()
         for k, v in model_dict.items():
-            new_key = k.replace("module.", "")  # 去掉 "module."
+            new_key = k.replace("module.", "")  # Remove the "module." prefix
             new_state_dict[new_key] = v
         model.load_state_dict(new_state_dict)
         return model

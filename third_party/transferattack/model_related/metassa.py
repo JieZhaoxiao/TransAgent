@@ -254,7 +254,7 @@ class DWT_2D_tiny(Module):
         super(DWT_2D_tiny, self).__init__()
         wavelet = pywt.Wavelet(wavename)
         self.band_low = wavelet.rec_lo
-        # print('band_low', self.band_low, len(self.band_low))  # [1/根号2 = 0.707， 0.07]
+        # print('band_low', self.band_low, len(self.band_low))  # [1/sqrt(2) = 0.707, 0.07]
         self.band_high = wavelet.rec_hi
         # print('band_high', self.band_high)  # [0.707, -0.707]
         assert len(self.band_low) == len(self.band_high)
@@ -265,7 +265,7 @@ class DWT_2D_tiny(Module):
 
     def get_matrix(self):
         """
-        生成变换矩阵
+        Generate transform matrices.
         generating the matrices: \\mathcal{L}, \\mathcal{H}
         :return: self.matrix_low = \\mathcal{L}, self.matrix_high = \\mathcal{H}
         """
@@ -376,7 +376,7 @@ class DWT_2D(Module):
 
     def get_matrix(self):
         """
-        生成变换矩阵
+        Generate transform matrices.
         generating the matrices: \\mathcal{L}, \\mathcal{H}
         :return: self.matrix_low = \\mathcal{L}, self.matrix_high = \\mathcal{H}
         """
@@ -467,7 +467,7 @@ class IDWT_2D(Module):
 
     def get_matrix(self):
         """
-        生成变换矩阵
+        Generate transform matrices.
         generating the matrices: \\mathcal{L}, \\mathcal{H}
         :return: self.matrix_low = \\mathcal{L}, self.matrix_high = \\mathcal{H}
         """
@@ -598,7 +598,7 @@ class CustomModel(nn.Module):
         self.fc = original_model.fc
 
     def forward(self, x1, x2, x3):
-        # 随机选择一层
+        # Select a layer at random
         a = random.uniform(0, 1)
         b = random.uniform(0, 1 - a)
         c = 1 - a - b
@@ -613,7 +613,7 @@ class CustomModel(nn.Module):
 
         x = self.features[layer_names.index(selected_layer_name) + 1:](feat)
         x_in = x.view(x.size(0), -1)
-        # 继续计算后续层的特征
+        # Continue computing features through the remaining layers
         x = self.fc(x_in)
         return x
 
@@ -621,6 +621,6 @@ class CustomModel(nn.Module):
         feature_dict = {}
         for name, layer in self.features.named_children():
             x = layer(x)
-            # 存储每一层的特征
+            # Store the features from each layer
             feature_dict[name] = x.clone()
         return feature_dict

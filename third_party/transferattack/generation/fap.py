@@ -56,7 +56,7 @@ class FAP(Attack):
         attack='FAP',
         top_n=64,
         cache_dir='cache/fap_masks',
-        bg_dir='./path/to/data', #训练数据的目录
+        bg_dir='./path/to/data',  # Directory containing the training data
         bg_num=100,
         block_size=8,
         **kwargs,
@@ -77,7 +77,7 @@ class FAP(Attack):
 
         self.freq_mask = None
 
-    # ---------------------------- 核心前向 ---------------------------- #
+    # -------------------------- Core forward pass -------------------------- #
     def forward(self, data, label, **kwargs):
         if self.targeted:
             assert len(label) == 2

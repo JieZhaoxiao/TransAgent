@@ -113,7 +113,7 @@ class AA(Attack):
 
         momentum = 0
         for _ in range(self.epoch):
-            # 获取source的feature mpa并保存
+            # Retrieve and store the source feature map
             logits = self.get_logits(self.transform(data + delta))
 
             # Calculate the loss

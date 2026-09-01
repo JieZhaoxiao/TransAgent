@@ -220,7 +220,7 @@ class LPM(Attack):
         return X_adv
 
     def predict_transfer_score(self, x, img, label, white_models, gray_models, batch_size=4):
-        # 每个个体的得分，通过每个mask单独作用到图像进行对抗攻击产生对抗样本在一组黑盒模型上的效果得分获得
+        # Score each mask by generating adversarial examples and evaluating them on black-box models
         mask = torch.from_numpy(x)
         mask = mask.reshape(-1, int(self.HEIGHT/self.patch_size), int(self.WIDTH/self.patch_size))
         numsum = x.shape[0]
@@ -235,7 +235,7 @@ class LPM(Attack):
         return scorelist
 
 class MyDE(GA):
-    # 可自定义排序，杂交，变异，选择
+    # Ranking, crossover, mutation, and selection can be customized
     def ranking(self):
         # import pdb;pdb.set_trace()
         self.Chrom = self.Chrom[np.argsort(self.Y),:]
@@ -260,7 +260,7 @@ class MyDE(GA):
             # print(n1.shape)
             while n1[0] == n1[1]:
                 n1 = np.random.randint(0, superior_size, 2)
-            # 让 0 跟多一些
+            # Favor zeros slightly
             check_1 = 1
             check_2 = 0
             for j in range(self.len_chrom):
@@ -292,8 +292,8 @@ class MyDE(GA):
         '''
         greedy selection
         '''
-        # 上一代个体Chrom,得分self.Y
-        # 得到这一代个体以及分数
+        # Previous-generation individuals in self.Chrom and scores in self.Y
+        # Obtain the current-generation individuals and scores
         offspring_Chrom = np.vstack((self.crossover_Chrom,self.mutation_Chrom))
         f_offspring  = self.func(offspring_Chrom)
         # f_chrom = self.Y.copy()

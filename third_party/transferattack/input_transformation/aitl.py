@@ -433,7 +433,7 @@ def input_cutout(input_tensor):
     processed_image = transform(input_tensor).cuda()
     return processed_image
 
-def input_invert(input_tensor): # 取反
+def input_invert(input_tensor):  # Invert values
     processed_image = -(input_tensor-0.5) + 0.5
     processed_image = -input_tensor.cuda()
     return processed_image
