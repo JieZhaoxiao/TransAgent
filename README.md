@@ -17,7 +17,7 @@ Model weights are downloaded automatically by TorchVision and timm.
 
 ## Generate Adversarial Examples
 
-The paper uses Qwen3.7-Plus through Alibaba Cloud Model Studio. Keep the API key in environment variables and never commit it to source code or configuration files.
+The paper uses Qwen3.7-Plus through Alibaba Cloud Model Studio.
 
 Linux and macOS
 
@@ -35,26 +35,12 @@ $env:DASHSCOPE_BASE_URL = "<openai-compatible-endpoint>"
 python generate.py --attack mi --surrogate resnet50 --seed 0
 ```
 
-Available attacks are `mi`, `pgn`, `mumodig`, `gaa`, and `foolmix`. Available surrogates are `resnet50` and `vit`. The paper configuration uses an $L_\infty$ budget of 16/255, a step size of 1.6/255, 10 attack steps, batch size 5, replanning interval 5, 7 retrieved memory records, and 2 test views per candidate program. Runtime is recorded under `runs/`.
-
-When the API is unavailable, the documented local fallback keeps the code executable. This API-free mode is not the main paper setting.
-
-The implementations of the configured attacks follow the open-source [TransferAttack](https://github.com/Trustworthy-AI-Group/TransferAttack) project.
+Attack implementations and identifiers follow the open-source [TransferAttack](https://github.com/Trustworthy-AI-Group/TransferAttack) registry. Checkpoint-based methods require their official weights.
 
 ## Evaluate Adversarial Examples
 
-The following command evaluates the included run on the seven black-box target models used in Table 1. It prints ASR and runtime without writing result files.
+The following command evaluates the included run on the seven black-box target models used in Table 1.
 
 ```bash
 python evaluate.py
-```
-
-## Citation
-
-```bibtex
-@article{zhang2026transagent,
-  title={TransAgent: A Plug-and-Play Agent for Finding Optimal Input Transformations in Adversarial Attacks},
-  author={Zhang, Yu and Yang, Xing and Zhao, Shijie and Deng, Kang and Peng, Anjie and Zeng, Hui},
-  year={2026}
-}
 ```

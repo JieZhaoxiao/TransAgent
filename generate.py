@@ -17,6 +17,11 @@ import yaml
 
 from transferattack.attacks.transagent import TransAgent
 from transferattack.data import ImageNetAttackDataset, save_png_batch
+from transagent.upstream_adapter import (
+    AVAILABLE_BASE_ATTACKS,
+    PAPER_BASE_ATTACKS,
+    UpstreamTransAgent,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -33,7 +38,7 @@ def seed_everything(seed: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--attack", choices=["mi", "pgn", "mumodig", "gaa", "foolmix"], default="mi")
+    parser.add_argument("--attack", choices=AVAILABLE_BASE_ATTACKS, default="mi")
     parser.add_argument("--surrogate", choices=["resnet50", "vit"], default="resnet50")
     parser.add_argument("--seed", type=int, choices=[0, 1, 2], default=0)
     parser.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
@@ -64,7 +69,8 @@ def main() -> None:
         num_workers=attack_config["num_workers"],
         pin_memory=str(args.device).startswith("cuda"),
     )
-    attacker = TransAgent(
+    attacker_class = TransAgent if args.attack in PAPER_BASE_ATTACKS else UpstreamTransAgent
+    attacker = attacker_class(
         model_name=config["surrogates"][args.surrogate],
         epsilon=attack_config["epsilon"],
         alpha=attack_config["alpha"],
@@ -79,7 +85,7 @@ def main() -> None:
         probe_views=attack_config["probe_views"],
         reward_weights=config["reward"],
         base_attack=args.attack,
-        base_attack_config=config["base_attacks"][args.attack],
+        base_attack_config=config["base_attacks"].get(args.attack, {}),
         planner_config=planner_config,
         rl_config=config["controller"],
         isolated_api_cache=planner_config["isolated_api_cache"],
