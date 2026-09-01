@@ -285,10 +285,10 @@ class UpstreamTransAgent:
 
         if done:
             return
-        if self._active.should_rollback:
-            self._activate(_identity_program(), self._step)
-        elif self._step % self.replanning_interval == 0:
+        if self._step % self.replanning_interval == 0:
             self._plan(self._step)
+        elif self._active.should_rollback:
+            self._activate(_identity_program(), self._step)
         elif self._active.expired or self._state.phase not in self.current_program.phases:
             program, _ = self.coordinator.controller.select(self._state, self._candidates)
             if self._tools is not None:

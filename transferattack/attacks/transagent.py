@@ -129,7 +129,8 @@ class TransAgent(MIFGSM):
                 if tools is not None:
                     tools.record_selection(program)
                 active = ActiveProgram(program, step, program.duration)
-            if force_identity:
+                force_identity = False
+            elif force_identity:
                 program = identity
                 active = ActiveProgram(identity, step, 1)
                 force_identity = False
